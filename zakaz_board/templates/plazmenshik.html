@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Очередь на резку</h1>
+
+{% for r, r_items in queue %}
+  <details class="card" open style="box-shadow:none;">
+    <summary>{{ r.name }} — {{ r.grade }} {{ r.thickness }}мм
+      {% if r.custom_sheet %}(нестанд. лист {{ r.custom_sheet }}){% endif %}
+      <span class="progress">— {{ r_items|length }} дет.</span>
+    </summary>
+    <table>
+      <tr><th>Код</th><th>Наименование</th><th>Размер</th><th>Кол-во</th></tr>
+      {% for p in r_items %}
+      <tr><td>{{ p.code }}</td><td>{{ p.name }}</td><td>{{ p.size }}</td><td>{{ p.qty_in_raskroy }}</td></tr>
+      {% endfor %}
+    </table>
+    <form method="post" action="/plazmenshik/cut/{{ r.id }}" style="margin-top:10px;">
+      <button type="submit">Вырезано — закрыть весь раскрой</button>
+    </form>
+  </details>
+{% else %}
+  <p>Очередь пуста — либо ничего не выдано со склада, либо всё уже вырезано.</p>
+{% endfor %}
+{% endblock %}

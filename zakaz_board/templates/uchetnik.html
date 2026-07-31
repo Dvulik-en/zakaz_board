@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Что выписать со склада</h1>
+<p style="font-size:13px; color:#666;">Раскрои, которые технолог уже собрал, но материал под них ещё не выдан.</p>
+
+{% for key, group in groups.items() %}
+  <details open>
+    <summary>{{ key[0] or '?' }} {{ key[1] or '?' }}мм
+      {% if key[2] %}(нестанд. лист {{ key[2] }}){% endif %}
+      <span class="progress">— {{ group|length }} лист(ов)</span>
+    </summary>
+    <table>
+      <tr><th>УП</th><th>Деталей внутри</th><th>Создан</th><th></th></tr>
+      {% for r in group %}
+      <tr>
+        <td>{{ r.name }}</td>
+        <td>{{ item_count.get(r.id, 0) }}</td>
+        <td>{{ r.created }}</td>
+        <td>
+          <form method="post" action="/uchetnik/issue/{{ r.id }}">
+            <button type="submit">Выдано</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </details>
+{% else %}
+  <p>Пока нет раскроев, ожидающих выдачи материала.</p>
+{% endfor %}
+{% endblock %}

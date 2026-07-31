@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Обзор по заказам</h1>
+
+{% for order_name, products in tree.items() %}
+  <details class="lvl-order" open>
+    <summary>{{ order_name }}</summary>
+    <table>
+      <tr><th>Изделие</th><th>Нужно, шт</th><th>Назначено в раскрои</th><th>Вырезано</th><th>%</th></tr>
+      {% for product_name, st in products.items() %}
+      <tr>
+        <td>{{ product_name }}</td>
+        <td>{{ st.total }}</td>
+        <td>{{ st.assigned }}</td>
+        <td>{{ st.cut }}</td>
+        <td>{{ (st.cut / st.total * 100) | round(1) if st.total else 0 }}%</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </details>
+{% else %}
+  <p>Пока ничего не загружено. Загрузка деталей — на вкладке «Технолог» (или скриптом upload_parts.py).</p>
+{% endfor %}
+{% endblock %}

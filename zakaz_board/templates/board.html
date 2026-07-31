@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Заготовительный участок — статус</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin:0; padding:12px; background:#f4f5f7; color:#222; }
+  h1 { font-size: 18px; margin: 4px 0 10px; }
+  .summary { margin-bottom:14px; font-size:14px; color:#333; }
+
+  details { background:#fff; border-radius:8px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,.10); overflow:hidden; }
+  details > summary { list-style:none; cursor:pointer; padding:10px 14px; font-weight:bold; }
+  details > summary::-webkit-details-marker { display:none; }
+  details > summary::before { content:"▸ "; }
+  details[open] > summary::before { content:"▾ "; }
+
+  .lvl-order > summary { background:#1f4e78; color:#fff; }
+  .lvl-product { margin:8px 10px; }
+  .lvl-product > summary { background:#d9e1f2; color:#1a1a1a; font-size:14px; }
+  .lvl-thick { margin:8px 10px; box-shadow:none; border:1px solid #eee; }
+  .lvl-thick > summary { background:#f0f4fa; font-size:13px; font-weight:normal; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+
+  .progress { font-weight:normal; opacity:.85; font-size:12px; }
+  .bulk-row { padding:6px 14px; background:#fafbfc; border-bottom:1px solid #eee; font-size:12px; display:flex; align-items:center; gap:8px; }
+  .bulk-row select { padding:3px; }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:6px 10px; text-align:left; border-bottom:1px solid #eee; }
+  select, input { padding:4px; border-radius:4px; border:1px solid #ccc; font-size:13px; }
+  tr.st-done { background:#c6efce; }
+  tr.st-progress { background:#fff2cc; }
+  tr.st-todo { background:#fce4d6; }
+  .refresh-note { font-size:12px; color:#888; margin-top:8px; }
+  @media (max-width:600px) {
+    th:nth-child(4), td:nth-child(4) { display:none; }
+  }
+</style>
+</head>
+<body>
+<h1>Заготовительный участок — статус</h1>
+<div class="summary">Всего деталей: {{ total }} — вырезано: {{ done }} из {{ total }}
+  {% if total %}({{ (done / total * 100) | round(1) }}%){% endif %}
+</div>
+
+{% for order_name, o in tree.items() %}
+  <details class="lvl-order">
+    <summary>{{ order_name }} <span class="progress">— {{ o.done }}/{{ o.total }}</span></summary>
+
+    {% for product_name, pr in o.products.items() %}
+      <details class="lvl-product">
+        <summary>{{ product_name }}{% if pr.date %} — план: {{ pr.date }}{% endif %}
+          <span class="progress">— {{ pr.done }}/{{ pr.total }}</span>
+        </summary>
+
+        {% for key, th in pr.thicknesses.items() %}
+          <details class="lvl-thick">
+            <summary>
+              <span>{{ key[0] or '?' }} {{ key[1] or '?' }}мм
+                {% if key[2] %}(нестанд. лист {{ key[2] }}){% endif %}</span>
+              <span class="progress">{{ th.done }}/{{ th.total }}</span>
+            </summary>
+
+            <div class="bulk-row">
+              Поставить статус всей группе:
+              <select onchange="bulkUpdate({{ th.parts | map(attribute='id') | list | tojson }}, this.value); this.selectedIndex=0;">
+                <option value="">—</option>
+                <option value="Не резано">Не резано</option>
+                <option value="В раскрое">В раскрое</option>
+                <option value="Вырезано">Вырезано</option>
+              </select>
+            </div>
+
+            <table>
+              <tr><th>Статус</th><th>УП</th><th>Код / наименование</th><th>Размер</th><th>Кол-во</th></tr>
+              {% for p in th.parts %}
+              <tr data-id="{{ p.id }}"
+                  class="{% if p.status == 'Вырезано' %}st-done{% elif p.status == 'В раскрое' %}st-progress{% elif p.status == 'Не резано' %}st-todo{% endif %}">
+                <td>
+                  <select data-role="status" onchange="updateField('{{ p.id }}', 'status', this.value)">
+                    <option value="" {{ 'selected' if not p.status else '' }}>—</option>
+                    <option value="Не резано" {{ 'selected' if p.status == 'Не резано' else '' }}>Не резано</option>
+                    <option value="В раскрое" {{ 'selected' if p.status == 'В раскрое' else '' }}>В раскрое</option>
+                    <option value="Вырезано" {{ 'selected' if p.status == 'Вырезано' else '' }}>Вырезано</option>
+                  </select>
+                </td>
+                <td><input type="text" maxlength="8" value="{{ p.up or '' }}"
+                           onchange="updateField('{{ p.id }}', 'up', this.value)" style="width:74px"></td>
+                <td>{{ p.code }} — {{ p.name }}</td>
+                <td>{{ p.size }}</td>
+                <td>{{ p.qty }}</td>
+              </tr>
+              {% endfor %}
+            </table>
+          </details>
+        {% endfor %}
+      </details>
+    {% endfor %}
+  </details>
+{% endfor %}
+
+<div class="refresh-note">Страница обновляется сама раз в минуту. Изменения статуса сохраняются сразу.</div>
+
+<script>
+function rowClassFor(status) {
+  if (status === 'Вырезано') return 'st-done';
+  if (status === 'В раскрое') return 'st-progress';
+  if (status === 'Не резано') return 'st-todo';
+  return '';
+}
+
+function updateField(id, field, value) {
+  const body = {id: id};
+  body[field] = value;
+  fetch('/update', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (field === 'status') {
+    const row = document.querySelector('tr[data-id="' + id + '"]');
+    if (row) row.className = rowClassFor(value);
+  }
+}
+
+function bulkUpdate(ids, status) {
+  if (!status || !ids.length) return;
+  fetch('/update_bulk', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ids: ids, status: status})
+  });
+  ids.forEach(function(id) {
+    const row = document.querySelector('tr[data-id="' + id + '"]');
+    if (row) {
+      row.className = rowClassFor(status);
+      const sel = row.querySelector('select[data-role="status"]');
+      if (sel) sel.value = status;
+    }
+  });
+}
+
+setTimeout(() => location.reload(), 60000);
+</script>
+</body>
+</html>
