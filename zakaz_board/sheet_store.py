@@ -177,11 +177,11 @@ def load_uzel_priorities():
     Загружает приоритеты узлов из листа 'uzel_priorities'.
     Возвращает словарь: {(order, product, uzel): {'target_date': 'YYYY-MM-DD', 'comment': '...'}}
     """
-    sh = _get_spreadsheet()
+    sh = _spreadsheet()  # <-- Заменили _get_spreadsheet() на _spreadsheet()
     try:
         ws = sh.worksheet("uzel_priorities")
     except Exception:
-        # Если вкладки ещё нет в Google Таблице — создадим её с заголовками
+        # Если вкладки ещё нет в Google Таблице — создаём с заголовками
         ws = sh.add_worksheet(title="uzel_priorities", rows=100, cols=5)
         ws.append_row(["order", "product", "uzel", "target_date", "comment"])
         return {}
@@ -201,7 +201,7 @@ def save_uzel_priority(order, product, uzel, target_date, comment):
     """
     Сохраняет или обновляет приоритет для конкретного узла.
     """
-    sh = _get_spreadsheet()
+    sh = _spreadsheet()  # <-- Заменили _get_spreadsheet() на _spreadsheet()
     try:
         ws = sh.worksheet("uzel_priorities")
     except Exception:
@@ -211,7 +211,6 @@ def save_uzel_priority(order, product, uzel, target_date, comment):
     records = ws.get_all_records()
     row_idx = None
 
-    # Ищем, есть ли уже такая запись (нумерация строк в gspread начинается с 2, т.к. 1 — заголовок)
     for i, r in enumerate(records, start=2):
         if (str(r.get("order")) == str(order) and 
             str(r.get("product")) == str(product) and 
@@ -220,8 +219,6 @@ def save_uzel_priority(order, product, uzel, target_date, comment):
             break
 
     if row_idx:
-        # Перезаписываем существующую строку
         ws.update(f"A{row_idx}:E{row_idx}", [[order, product, uzel, target_date, comment]])
     else:
-        # Добавляем новую строку
         ws.append_row([order, product, uzel, target_date, comment])
