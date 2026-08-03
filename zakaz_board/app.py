@@ -1,6 +1,7 @@
 import os
 import time
 from collections import defaultdict, OrderedDict
+from datetime import datetime
 
 from flask import Flask, render_template, request, redirect, url_for
 import requests
@@ -106,13 +107,75 @@ def build_full_tree(parts):
 def pdo_view():
     parts, raskroi, items = load_all()
     assigned, cut = compute_part_stats(parts, raskroi, items)
+    
+    # 1. Загружаем приоритеты узлов из БД/Google Sheets
+    # Ожидаемый формат priorities: {(order, product, uzel): {'target_date': '2026-08-10', 'comment': 'срочно'}}
+    priorities = sheet_store.load_uzel_priorities()
+
     for p in parts:
         p["_assigned"] = assigned.get(p["id"], 0)
         p["_cut"] = cut.get(p["id"], 0)
 
+    # 2. Строим базовое дерево
     tree = build_full_tree(parts)
+
+    # 3. Обогащаем дерево приоритетами и сортируем узлы
+    today_str = date.today().isoformat()
+    
+    for order_name, products in tree.items():
+        for product_name, uzly in products.items():
+            
+            # Собираем новую структурированную информацию по каждому узлу
+            uzly_with_meta = {}
+            for uzel_name, part_list in uzly.items():
+                prio_key = (order_name, product_name, uzel_name)
+                prio_data = priorities.get(prio_key, {})
+                
+                target_date = prio_data.get("target_date", "")
+                comment = prio_data.get("comment", "")
+                
+                # Проверяем, просрочена ли дата резки
+                is_expired = False
+                if target_date and target_date < today_str:
+                    is_expired = True
+
+                uzly_with_meta[uzel_name] = {
+                    "parts": part_list,
+                    "target_date": target_date,
+                    "comment": comment,
+                    "is_expired": is_expired
+                }
+
+            # 4. Функция-ключ для сортировки узлов
+            def sort_uzel_key(item):
+                u_name, u_data = item
+                t_date = u_data["target_date"]
+                if t_date:
+                    try:
+                        # (0 = Блок с датами, дата для сортировки, имя узла)
+                        return (0, datetime.strptime(t_date, "%Y-%m-%d"), u_name)
+                    except ValueError:
+                        pass
+                # (1 = Блок "Без даты", максимальная дата, имя узла)
+                return (1, datetime.max, u_name)
+
+            # Перезаписываем узлы отсортированным словарём
+            products[product_name] = dict(sorted(uzly_with_meta.items(), key=sort_uzel_key))
+
     return render_template("pdo.html", tree=tree, active="pdo")
 
+@app.route("/pdo/update_priority", methods=["POST"])
+def update_priority():
+    order = request.form.get("order")
+    product = request.form.get("product")
+    uzel = request.form.get("uzel")
+    target_date = request.form.get("target_date") # строка YYYY-MM-DD
+    comment = request.form.get("comment")
+
+    # Функция в sheet_store, которая записывает/обновляет строчку в Google Таблице
+    sheet_store.save_uzel_priority(order, product, uzel, target_date, comment)
+
+    return redirect(url_for("pdo_view"))
 
 # -------------------------------------------------------------- Технолог ---
 

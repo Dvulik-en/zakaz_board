@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Обзор по заказам</h1>
+<h1>Обзор по заказам (ПДО)</h1>
+
+<style>
+  .uzel-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; }
+  .uzel-meta { display: flex; gap: 10px; align-items: center; font-size: 12px; font-weight: normal; }
+  .badge-date { background: #e3f2fd; color: #0d47a1; padding: 2px 6px; border-radius: 4px; border: 1px solid #bbdefb; }
+  .badge-expired { background: #ffebee; color: #c62828; border-color: #ffcdd2; font-weight: bold; }
+  .badge-nodate { background: #eee; color: #777; padding: 2px 6px; border-radius: 4px; }
+  .uzel-comment { font-style: italic; color: #555; }
+</style>
 
 {% for order_name, products in tree.items() %}
   <details>
@@ -8,13 +17,57 @@
     {% for product_name, uzly in products.items() %}
       <details style="margin:8px 10px;">
         <summary style="background:#d9e1f2;">{{ product_name }}</summary>
-        {% for uzel, part_list in uzly.items() %}
+        
+        {% for uzel_name, u_data in uzly.items() %}
           <details style="margin:8px 10px; box-shadow:none; border:1px solid #eee;">
-            <summary style="background:#f0f4fa; font-size:13px; font-weight:normal;">{{ uzel }}</summary>
+            <summary style="background:#f0f4fa; font-size:13px;">
+              <div class="uzel-header">
+                <span>{{ uzel_name }}</span>
+                <div class="uzel-meta">
+                  {% if u_data.target_date %}
+                    <span class="badge-date {% if u_data.is_expired %}badge-expired{% endif %}">
+                      📅 {{ u_data.target_date }}
+                    </span>
+                  {% else %}
+                    <span class="badge-nodate">Без даты</span>
+                  {% endif %}
+
+                  {% if u_data.comment %}
+                    <span class="uzel-comment">💬 {{ u_data.comment }}</span>
+                  {% endif %}
+                </div>
+              </div>
+            </summary>
+
+            <!-- Форма управления приоритетом узла -->
+            <form method="post" action="/pdo/update_uzel_priority" style="padding: 8px 10px; background: #fafafa; border-bottom: 1px solid #eee; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <input type="hidden" name="order" value="{{ order_name }}">
+              <input type="hidden" name="product" value="{{ product_name }}">
+              <input type="hidden" name="uzel" value="{{ uzel_name }}">
+
+              <label style="font-size:12px;">Дата резки:
+                <input type="date" name="target_date" value="{{ u_data.target_date or '' }}">
+              </label>
+
+              <label style="font-size:12px; flex-grow: 1;">Комментарий:
+                <input type="text" name="comment" value="{{ u_data.comment or '' }}" placeholder="напр., Срочно в сборку" style="width: 80%;">
+              </label>
+
+              <button type="submit" class="secondary" style="padding: 3px 8px;">Сохранить приоритет</button>
+            </form>
+
+            <!-- Таблица деталей узла -->
             <table>
-              <tr><th>Код</th><th>Наименование</th><th>Марка/толщина</th><th>Размер</th>
-                  <th>Нужно</th><th>В раскроях</th><th>Вырезано</th></tr>
-              {% for p in part_list %}
+              <tr>
+                <th>Код</th>
+                <th>Наименование</th>
+                <th>Марка/толщина</th>
+                <th>Размер</th>
+                <th>Нужно</th>
+                <th>В раскроях</th>
+                <th>Вырезано</th>
+              </tr>
+              {% for p in u_data.parts %}
               <tr class="{% if p._cut >= (p.qty_total|int) and (p.qty_total|int) > 0 %}st-done{% elif p._assigned > 0 %}st-progress{% endif %}">
                 <td>{{ p.code }}</td>
                 <td>{{ p.name }}</td>
@@ -32,6 +85,6 @@
     {% endfor %}
   </details>
 {% else %}
-  <p>Пока ничего не загружено. Заливка деталей — скриптом upload_parts.py.</p>
+  <p>Пока ничего не загружено.</p>
 {% endfor %}
 {% endblock %}

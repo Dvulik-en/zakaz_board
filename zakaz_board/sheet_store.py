@@ -38,7 +38,9 @@ import uuid
 import gspread
 from google.oauth2.service_account import Credentials
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
+          'https://www.googleapis.com/auth/drive',
+          ]
 
 PARTS_SHEET = "parts_pool"
 RASKROI_SHEET = "raskroi"
