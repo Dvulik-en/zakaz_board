@@ -195,58 +195,64 @@ def group_uzel_by_thickness(tree):
     return out
 
 
+from datetime import datetime
+
 @app.route("/tehnolog")
 def tehnolog_view():
     parts, raskroi, items = load_all()
-    assigned, _ = compute_part_stats(parts, raskroi, items)
+    priorities = sheet_store.load_uzel_priorities()
 
-    f_order = request.args.get("order", "")
-    f_product = request.args.get("product", "")
-    f_q = request.args.get("q", "").strip().lower()
+    # ... (здесь фильтрация parts, если пользователь выбрал order/product/q) ...
 
-    orders = sorted({p["order"] for p in parts if p.get("order")})
-    products = sorted({p["product"] for p in parts if p.get("product") and (not f_order or p["order"] == f_order)})
+    # Строим обычное дерево: orders -> products -> uzly -> groups
+    raw_tree = build_tehnolog_tree(parts) 
 
-    def matches(p):
-        if f_order and p.get("order") != f_order:
-            return False
-        if f_product and p.get("product") != f_product:
-            return False
-        if f_q and f_q not in f"{p.get('code','')} {p.get('name','')}".lower():
-            return False
-        return True
+    # Перестраиваем дерево под структуру: Date -> Order -> Product -> Uzel
+    date_tree = {}
 
-    filtered = []
-    for p in parts:
-        if not matches(p):
-            continue
-        remaining = int(p.get("qty_total") or 0) - assigned.get(p["id"], 0)
-        if remaining <= 0:
-            continue  # уже полностью разложено по раскроям — нечего больше экспортировать
-        p = dict(p)
-        p["_remaining"] = remaining
-        filtered.append(p)
+    for order_name, products in raw_tree.items():
+        for product_name, uzly in products.items():
+            for uzel_name, groups in uzly.items():
+                
+                # Получаем дату и комментарий от ПДО
+                prio = priorities.get((order_name, product_name, uzel_name), {})
+                target_date = prio.get("target_date", "")
+                comment = prio.get("comment", "")
 
-    tree = group_uzel_by_thickness(build_full_tree(filtered))
+                # Если даты нет — отправляем в специальный ключ
+                date_key = target_date if target_date else "NO_DATE"
 
-    editable_raskroi = [r for r in raskroi if r.get("status") == "Создан"]
-    active_raskroy_id = request.args.get("raskroy", "")
-    active_raskroy = next((r for r in editable_raskroi if r["id"] == active_raskroy_id), None)
+                # Инициализируем вложенную структуру
+                if date_key not in date_tree:
+                    date_tree[date_key] = {}
+                if order_name not in date_tree[date_key]:
+                    date_tree[date_key][order_name] = {}
+                if product_name not in date_tree[date_key][order_name]:
+                    date_tree[date_key][order_name][product_name] = {}
 
-    active_items = []
-    if active_raskroy:
-        parts_by_id = {p["id"]: p for p in parts}
-        for it in items:
-            if it.get("raskroy_id") == active_raskroy_id:
-                p = dict(parts_by_id.get(it["part_id"], {}))
-                p["qty_in_raskroy"] = it.get("qty")
-                active_items.append(p)
+                # Записываем узел с его листами и мета-данными
+                date_tree[date_key][order_name][product_name][uzel_name] = {
+                    "groups": groups,
+                    "comment": comment
+                }
 
-    return render_template("tehnolog.html", tree=tree, orders=orders, products=products,
-                            f_order=f_order, f_product=f_product, f_q=f_q,
-                            active_raskroy=active_raskroy, active_items=active_items,
-                            msg=request.args.get("msg", ""), active="tehnolog")
+    # Сортируем даты: сначала календарные даты по возрастанию, в самом конце — "NO_DATE"
+    def sort_dates(item):
+        d_key = item[0]
+        if d_key != "NO_DATE":
+            try:
+                return (0, datetime.strptime(d_key, "%Y-%m-%d"))
+            except ValueError:
+                pass
+        return (1, datetime.max)
 
+    sorted_date_tree = dict(sorted(date_tree.items(), key=sort_dates))
+
+    return render_template(
+        "tehnolog.html", 
+        date_tree=sorted_date_tree, 
+        active="tehnolog"
+    )
 
 @app.route("/tehnolog/export", methods=["POST"])
 def export_view():
