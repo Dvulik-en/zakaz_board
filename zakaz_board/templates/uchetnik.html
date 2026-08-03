@@ -7,14 +7,15 @@
   <details open>
     <summary>{{ key[0] or '?' }} {{ key[1] or '?' }}мм
       {% if key[2] %}(нестанд. лист {{ key[2] }}){% endif %}
-      <span class="progress">— {{ group|length }} лист(ов)</span>
+      <span class="progress">— нужно листов: {{ group_totals[key] }}</span>
     </summary>
     <table>
-      <tr><th>УП</th><th>Деталей внутри</th><th>Создан</th><th></th></tr>
+      <tr><th>УП</th><th>Деталей внутри</th><th>Листов (с повторами)</th><th>Создан</th><th></th></tr>
       {% for r in group %}
       <tr>
         <td>{{ r.name }}</td>
         <td>{{ item_count.get(r.id, 0) }}</td>
+        <td>{{ sheet_count_of(r) }}</td>
         <td>{{ r.created }}</td>
         <td>
           <form method="post" action="/uchetnik/issue/{{ r.id }}">

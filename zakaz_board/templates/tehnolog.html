@@ -3,39 +3,30 @@
 <h1>Конструктор раскроя</h1>
 {% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
 
-<div class="card">
-  <b>Создать новый раскрой</b>
-  <form method="post" action="/tehnolog/create_raskroy" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-    <input name="name" placeholder="Название УП (до 8 симв.)" maxlength="8" required>
-    <input name="grade" placeholder="Марка (09Г2С)" required>
-    <input name="thickness" placeholder="Толщина, мм" required>
-    <input name="custom_sheet" placeholder="Нестанд. лист (напр. 2000x6000), необязательно">
-    <button type="submit">Создать</button>
-  </form>
-</div>
-
 {% if active_raskroy %}
 <div class="card" style="border:2px solid #1f4e78;">
   <b>Активный раскрой: {{ active_raskroy.name }}</b> — {{ active_raskroy.grade }} {{ active_raskroy.thickness }}мм
   {% if active_raskroy.custom_sheet %}(нестанд. лист {{ active_raskroy.custom_sheet }}){% endif %}
   <table style="margin-top:8px;">
-    <tr><th>Код</th><th>Наименование</th><th>Кол-во в раскрое</th></tr>
+    <tr><th>Код</th><th>Наименование</th><th>Узел</th><th>Кол-во в раскрое</th></tr>
     {% for p in active_items %}
-    <tr><td>{{ p.code }}</td><td>{{ p.name }}</td><td>{{ p.qty_in_raskroy }}</td></tr>
+    <tr><td>{{ p.code }}</td><td>{{ p.name }}</td><td>{{ p.uzel }}</td><td>{{ p.qty_in_raskroy }}</td></tr>
     {% else %}
-    <tr><td colspan="3">Пока пусто — добавьте детали из списка ниже.</td></tr>
+    <tr><td colspan="4">Пока пусто.</td></tr>
     {% endfor %}
   </table>
 
-  <form method="post" action="/tehnolog/upload_pdf" enctype="multipart/form-data" style="margin-top:10px; display:flex; gap:8px; align-items:center;">
-    <input type="hidden" name="raskroy_id" value="{{ active_raskroy.id }}">
-    <input type="file" name="pdf" accept=".pdf">
-    <button type="submit" class="secondary">Прикрепить PDF от AJAN</button>
-    {% if active_raskroy.pdf_name %}<span style="font-size:12px; color:#666;">сейчас: {{ active_raskroy.pdf_name }}</span>{% endif %}
-  </form>
+  <div style="margin-top:10px; display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
+    <a href="/tehnolog/download/{{ active_raskroy.id }}"><button type="button" class="secondary">Скачать список для поиска DXF</button></a>
+
+    <form method="post" action="/tehnolog/upload_pdf" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center;">
+      <input type="hidden" name="raskroy_id" value="{{ active_raskroy.id }}">
+      <input type="file" name="pdf" accept=".pdf">
+      <button type="submit" class="secondary">Прикрепить PDF от AJAN</button>
+      {% if active_raskroy.pdf_name %}<span style="font-size:12px; color:#666;">сейчас: {{ active_raskroy.pdf_name }} ({{ active_raskroy.sheet_count }} лист.)</span>{% endif %}
+    </form>
+  </div>
 </div>
-{% else %}
-<p style="font-size:13px; color:#666;">Создайте раскрой выше или выберите существующий (список ниже слева на вкладке «Учётчик» пока не выданные), чтобы добавлять в него детали.</p>
 {% endif %}
 
 <div class="filters">
@@ -49,41 +40,49 @@
       <option value="">— изделие —</option>
       {% for pr in products %}<option value="{{ pr }}" {{ 'selected' if pr==f_product }}>{{ pr }}</option>{% endfor %}
     </select>
-    <select name="uzel" onchange="this.form.submit()">
-      <option value="">— узел (эксель) —</option>
-      {% for u in uzly %}<option value="{{ u }}" {{ 'selected' if u==f_uzel }}>{{ u }}</option>{% endfor %}
-    </select>
     <input name="q" placeholder="поиск по коду/названию" value="{{ f_q }}">
     <button type="submit" class="secondary">Найти</button>
   </form>
 </div>
 
-<form method="post" action="/tehnolog/add_items">
-  <input type="hidden" name="raskroy_id" value="{{ active_raskroy.id if active_raskroy else '' }}">
-  <input type="hidden" name="f_order" value="{{ f_order }}">
-  <input type="hidden" name="f_product" value="{{ f_product }}">
-  <input type="hidden" name="f_uzel" value="{{ f_uzel }}">
-  <input type="hidden" name="f_q" value="{{ f_q }}">
-  <table>
-    <tr><th></th><th>Заказ / изделие / узел</th><th>Код — наименование</th><th>Марка/толщ.</th><th>Размер</th><th>Осталось не назначено</th><th>Добавить шт.</th></tr>
-    {% for p in parts %}
-    <tr>
-      <td><input type="checkbox" name="part_id" value="{{ p.id }}"></td>
-      <td style="font-size:11px; color:#666;">{{ p.order }} / {{ p.product }} / {{ p.uzel }}</td>
-      <td>{{ p.code }} — {{ p.name }}</td>
-      <td>{{ p.grade }} {{ p.thickness }}мм</td>
-      <td>{{ p.size }}</td>
-      <td>{{ p._remaining }} из {{ p.qty_total }}</td>
-      <td><input type="number" name="qty_{{ p.id }}" min="0" max="{{ p._remaining }}" value="{{ p._remaining if p._remaining > 0 else 0 }}" style="width:60px"></td>
-    </tr>
-    {% else %}
-    <tr><td colspan="7">Ничего не найдено под текущий фильтр.</td></tr>
-    {% endfor %}
-  </table>
-  {% if active_raskroy %}
-  <button type="submit" style="margin-top:10px;">Добавить отмеченное в раскрой «{{ active_raskroy.name }}»</button>
+<form method="post" action="/tehnolog/export">
+  <div class="card" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <b>Название нового раскроя (УП):</b>
+    <input name="name" maxlength="8" placeholder="напр. 04S_SL01" required>
+    <button type="submit">Экспорт в Аджан — создать раскрой из отмеченных листов</button>
+  </div>
+
+  {% for order_name, products in tree.items() %}
+    <details>
+      <summary>{{ order_name }}</summary>
+      {% for product_name, uzly in products.items() %}
+        <details style="margin:8px 10px;">
+          <summary style="background:#d9e1f2;">{{ product_name }}</summary>
+          {% for uzel, groups in uzly.items() %}
+            <details style="margin:8px 10px; box-shadow:none; border:1px solid #eee;">
+              <summary style="background:#f0f4fa; font-size:13px; font-weight:normal;">{{ uzel }}</summary>
+              {% for key, part_list in groups.items() %}
+                <div style="margin:6px 10px; border:1px dashed #ccc; border-radius:6px; padding:6px 10px;">
+                  <label style="font-size:13px;">
+                    <input type="checkbox" name="group_ids" value="{{ part_list | map(attribute='id') | join(',') }}">
+                    <b>Лист: {{ key[0] or '?' }} {{ key[1] or '?' }}мм{% if key[2] %} (нестанд. {{ key[2] }}){% endif %}</b>
+                    — {{ part_list | length }} поз.
+                  </label>
+                  <table>
+                    <tr><th>Код</th><th>Наименование</th><th>Размер</th><th>Осталось назначить</th></tr>
+                    {% for p in part_list %}
+                    <tr><td>{{ p.code }}</td><td>{{ p.name }}</td><td>{{ p.size }}</td><td>{{ p._remaining }}</td></tr>
+                    {% endfor %}
+                  </table>
+                </div>
+              {% endfor %}
+            </details>
+          {% endfor %}
+        </details>
+      {% endfor %}
+    </details>
   {% else %}
-  <p style="font-size:12px; color:#888; margin-top:8px;">Сначала создайте или выберите раскрой сверху.</p>
-  {% endif %}
+    <p>Под текущий фильтр ничего не осталось (либо всё уже разложено по раскроям).</p>
+  {% endfor %}
 </form>
 {% endblock %}

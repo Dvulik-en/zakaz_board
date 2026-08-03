@@ -81,26 +81,56 @@ def check_products_complete(affected_part_ids):
             notify_bitrix24(f"Изделие «{product}» (заказ {order}) полностью вырезано.")
 
 
+def _safe_float(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def build_full_tree(parts):
+    """Заказ -> Изделие -> Узел -> [детали], детали отсортированы стабильно."""
+    tree = OrderedDict()
+    for p in sorted(parts, key=lambda x: (str(x.get("order") or ""), str(x.get("product") or ""),
+                                           str(x.get("uzel") or ""), str(x.get("grade") or ""),
+                                           _safe_float(x.get("thickness")))):
+        o = tree.setdefault(p.get("order"), OrderedDict())
+        pr = o.setdefault(p.get("product"), OrderedDict())
+        pr.setdefault(p.get("uzel"), []).append(p)
+    return tree
+
+
 # ------------------------------------------------------------------ ПДО ---
 
 @app.route("/")
 def pdo_view():
     parts, raskroi, items = load_all()
     assigned, cut = compute_part_stats(parts, raskroi, items)
+    for p in parts:
+        p["_assigned"] = assigned.get(p["id"], 0)
+        p["_cut"] = cut.get(p["id"], 0)
 
-    tree = OrderedDict()
-    for p in sorted(parts, key=lambda x: (str(x.get("order") or ""), str(x.get("product") or ""))):
-        o = tree.setdefault(p["order"], OrderedDict())
-        pr = o.setdefault(p["product"], {"total": 0, "assigned": 0, "cut": 0})
-        qty = int(p.get("qty_total") or 0)
-        pr["total"] += qty
-        pr["assigned"] += min(assigned.get(p["id"], 0), qty)
-        pr["cut"] += cut.get(p["id"], 0)
-
+    tree = build_full_tree(parts)
     return render_template("pdo.html", tree=tree, active="pdo")
 
 
 # -------------------------------------------------------------- Технолог ---
+
+def group_uzel_by_thickness(tree):
+    """Заказ->Изделие->Узел->[детали] превращает в ...->Узел->{(марка,толщ,нестанд):[детали]}"""
+    out = OrderedDict()
+    for order, products in tree.items():
+        out[order] = OrderedDict()
+        for product, uzly in products.items():
+            out[order][product] = OrderedDict()
+            for uzel, parts_list in uzly.items():
+                groups = OrderedDict()
+                for p in parts_list:
+                    key = (p.get("grade"), p.get("thickness"), p.get("custom_sheet") or "")
+                    groups.setdefault(key, []).append(p)
+                out[order][product][uzel] = groups
+    return out
+
 
 @app.route("/tehnolog")
 def tehnolog_view():
@@ -109,29 +139,32 @@ def tehnolog_view():
 
     f_order = request.args.get("order", "")
     f_product = request.args.get("product", "")
-    f_uzel = request.args.get("uzel", "")
     f_q = request.args.get("q", "").strip().lower()
 
     orders = sorted({p["order"] for p in parts if p.get("order")})
     products = sorted({p["product"] for p in parts if p.get("product") and (not f_order or p["order"] == f_order)})
-    uzly = sorted({p["uzel"] for p in parts if p.get("uzel")
-                   and (not f_order or p["order"] == f_order)
-                   and (not f_product or p["product"] == f_product)})
 
     def matches(p):
         if f_order and p.get("order") != f_order:
             return False
         if f_product and p.get("product") != f_product:
             return False
-        if f_uzel and p.get("uzel") != f_uzel:
-            return False
         if f_q and f_q not in f"{p.get('code','')} {p.get('name','')}".lower():
             return False
         return True
 
-    filtered = [p for p in parts if matches(p)]
-    for p in filtered:
-        p["_remaining"] = int(p.get("qty_total") or 0) - assigned.get(p["id"], 0)
+    filtered = []
+    for p in parts:
+        if not matches(p):
+            continue
+        remaining = int(p.get("qty_total") or 0) - assigned.get(p["id"], 0)
+        if remaining <= 0:
+            continue  # уже полностью разложено по раскроям — нечего больше экспортировать
+        p = dict(p)
+        p["_remaining"] = remaining
+        filtered.append(p)
+
+    tree = group_uzel_by_thickness(build_full_tree(filtered))
 
     editable_raskroi = [r for r in raskroi if r.get("status") == "Создан"]
     active_raskroy_id = request.args.get("raskroy", "")
@@ -146,60 +179,66 @@ def tehnolog_view():
                 p["qty_in_raskroy"] = it.get("qty")
                 active_items.append(p)
 
-    return render_template("tehnolog.html", parts=filtered, orders=orders, products=products,
-                            uzly=uzly, f_order=f_order, f_product=f_product, f_uzel=f_uzel, f_q=f_q,
-                            editable_raskroi=editable_raskroi, active_raskroy=active_raskroy,
-                            active_items=active_items, msg=request.args.get("msg", ""), active="tehnolog")
+    return render_template("tehnolog.html", tree=tree, orders=orders, products=products,
+                            f_order=f_order, f_product=f_product, f_q=f_q,
+                            active_raskroy=active_raskroy, active_items=active_items,
+                            msg=request.args.get("msg", ""), active="tehnolog")
 
 
-@app.route("/tehnolog/create_raskroy", methods=["POST"])
-def create_raskroy():
+@app.route("/tehnolog/export", methods=["POST"])
+def export_view():
     name = request.form.get("name", "").strip()[:8]
-    grade = request.form.get("grade", "").strip()
-    thickness = request.form.get("thickness", "").strip()
-    custom_sheet = request.form.get("custom_sheet", "").strip()
-    if not name or not grade or not thickness:
-        return redirect(url_for("tehnolog_view", msg="Заполните название, марку и толщину"))
-    rid = sheet_store.create_raskroy(name, grade, thickness, custom_sheet)
-    invalidate_cache()
-    return redirect(url_for("tehnolog_view", raskroy=rid, msg=f"Раскрой «{name}» создан"))
+    group_values = request.form.getlist("group_ids")  # каждое значение: "id1,id2,id3"
+    if not name:
+        return redirect(url_for("tehnolog_view", msg="Укажите название раскроя (УП)"))
+    if not group_values:
+        return redirect(url_for("tehnolog_view", msg="Отметьте хотя бы один лист"))
 
+    part_ids = set()
+    for s in group_values:
+        part_ids.update(x for x in s.split(",") if x)
 
-@app.route("/tehnolog/add_items", methods=["POST"])
-def add_items():
-    raskroy_id = request.form.get("raskroy_id")
-    part_ids = request.form.getlist("part_id")
     parts, raskroi, items = load_all()
-    raskroy = next((r for r in raskroi if r["id"] == raskroy_id), None)
-    if not raskroy:
-        return redirect(url_for("tehnolog_view", msg="Раскрой не найден"))
-
+    assigned, _ = compute_part_stats(parts, raskroi, items)
     parts_by_id = {p["id"]: p for p in parts}
-    to_add = []
-    skipped = 0
-    for pid in part_ids:
-        p = parts_by_id.get(pid)
-        try:
-            qty = int(request.form.get(f"qty_{pid}") or 0)
-        except ValueError:
-            qty = 0
-        if not p or qty <= 0:
-            continue
-        if str(p.get("grade")) != str(raskroy.get("grade")) or str(p.get("thickness")) != str(raskroy.get("thickness")):
-            skipped += 1
-            continue
-        to_add.append((pid, qty))
+    selected = [parts_by_id[pid] for pid in part_ids if pid in parts_by_id]
+    if not selected:
+        return redirect(url_for("tehnolog_view", msg="Детали не найдены"))
 
+    keys = {(p.get("grade"), p.get("thickness"), p.get("custom_sheet") or "") for p in selected}
+    if len(keys) > 1:
+        return redirect(url_for("tehnolog_view",
+                                 msg="Выбраны листы с разной толщиной/маркой — за один экспорт можно только одну толщину"))
+
+    grade, thickness, custom_sheet = next(iter(keys))
+    raskroy_id = sheet_store.create_raskroy(name, grade, thickness, custom_sheet)
+
+    to_add = []
+    for p in selected:
+        remaining = int(p.get("qty_total") or 0) - assigned.get(p["id"], 0)
+        if remaining > 0:
+            to_add.append((p["id"], remaining))
     sheet_store.add_items(raskroy_id, to_add)
     invalidate_cache()
-    msg = f"Добавлено деталей: {len(to_add)}"
-    if skipped:
-        msg += f", пропущено (не совпала марка/толщина): {skipped}"
     return redirect(url_for("tehnolog_view", raskroy=raskroy_id,
-                             order=request.form.get("f_order", ""),
-                             product=request.form.get("f_product", ""),
-                             uzel=request.form.get("f_uzel", ""),
-                             q=request.form.get("f_q", ""), msg=msg))
+                             msg=f"Раскрой «{name}» создан, деталей: {len(to_add)}. "
+                                 f"Список для поиска DXF можно скачать в карточке ниже."))
+
+
+@app.route("/tehnolog/download/<raskroy_id>")
+def download_raskroy(raskroy_id):
+    parts, raskroi, items = load_all()
+    parts_by_id = {p["id"]: p for p in parts}
+    lines = ["Код;Наименование;Толщина;Размер;Количество"]
+    for it in items:
+        if it.get("raskroy_id") == raskroy_id:
+            p = parts_by_id.get(it["part_id"], {})
+            lines.append(f"{p.get('code','')};{p.get('name','')};{p.get('thickness','')};"
+                         f"{p.get('size','')};{it.get('qty','')}")
+    content = "\ufeff" + "\n".join(lines)
+    from flask import Response
+    return Response(content, mimetype="text/csv; charset=utf-8",
+                     headers={"Content-Disposition": f"attachment; filename=raskroy_{raskroy_id}.csv"})
 
 
 @app.route("/tehnolog/upload_pdf", methods=["POST"])
@@ -207,7 +246,23 @@ def upload_pdf():
     raskroy_id = request.form.get("raskroy_id")
     file = request.files.get("pdf")
     if file and raskroy_id:
-        sheet_store.attach_pdf(raskroy_id, file.filename)
+        import tempfile
+        from ajan_pdf_parser import parse_ajan_pdf
+        sheet_count = "1"
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                file.save(tmp.name)
+                tmp_path = tmp.name
+            ups = parse_ajan_pdf(tmp_path)
+            if ups:
+                sheet_count = str(ups[0].get("repeat_count") or "1")
+        except Exception as e:
+            print("Не удалось разобрать PDF (сохранили только имя файла):", e)
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        sheet_store.attach_pdf(raskroy_id, file.filename, sheet_count=sheet_count)
         invalidate_cache()
     return redirect(url_for("tehnolog_view", raskroy=raskroy_id, msg="PDF прикреплён"))
 
@@ -228,7 +283,16 @@ def uchetnik_view():
     for it in items:
         item_count[it.get("raskroy_id")] += 1
 
-    return render_template("uchetnik.html", groups=groups, item_count=item_count, active="uchetnik")
+    def sheet_count_of(r):
+        try:
+            return int(r.get("sheet_count") or 1)
+        except (TypeError, ValueError):
+            return 1
+
+    group_totals = {key: sum(sheet_count_of(r) for r in group) for key, group in groups.items()}
+
+    return render_template("uchetnik.html", groups=groups, item_count=item_count,
+                            group_totals=group_totals, sheet_count_of=sheet_count_of, active="uchetnik")
 
 
 @app.route("/uchetnik/issue/<raskroy_id>", methods=["POST"])
@@ -249,12 +313,15 @@ def plazmenshik_view():
     queue_with_items = []
     for r in queue:
         r_items = []
+        uzly = set()
         for it in items:
             if it.get("raskroy_id") == r["id"]:
                 p = dict(parts_by_id.get(it["part_id"], {}))
                 p["qty_in_raskroy"] = it.get("qty")
                 r_items.append(p)
-        queue_with_items.append((r, r_items))
+                if p.get("uzel"):
+                    uzly.add(f'{p.get("product")} / {p.get("uzel")}')
+        queue_with_items.append((r, r_items, sorted(uzly)))
 
     return render_template("plazmenshik.html", queue=queue_with_items, active="plazmenshik")
 

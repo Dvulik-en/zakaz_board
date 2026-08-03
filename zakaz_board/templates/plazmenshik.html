@@ -2,12 +2,20 @@
 {% block content %}
 <h1>Очередь на резку</h1>
 
-{% for r, r_items in queue %}
+{% for r, r_items, uzly in queue %}
   <details class="card" open style="box-shadow:none;">
     <summary>{{ r.name }} — {{ r.grade }} {{ r.thickness }}мм
       {% if r.custom_sheet %}(нестанд. лист {{ r.custom_sheet }}){% endif %}
       <span class="progress">— {{ r_items|length }} дет.</span>
     </summary>
+
+    {% if uzly %}
+    <div style="font-size:12px; color:#555; margin-bottom:6px;">Режем для: {{ uzly | join(', ') }}</div>
+    {% endif %}
+    {% if r.pdf_name %}
+    <div style="font-size:12px; color:#555; margin-bottom:6px;">PDF: {{ r.pdf_name }} ({{ r.sheet_count }} лист.) — файл у технолога, ищите по этому имени</div>
+    {% endif %}
+
     <table>
       <tr><th>Код</th><th>Наименование</th><th>Размер</th><th>Кол-во</th></tr>
       {% for p in r_items %}

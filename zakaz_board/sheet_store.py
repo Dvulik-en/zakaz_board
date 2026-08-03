@@ -38,7 +38,9 @@ import uuid
 import gspread
 from google.oauth2.service_account import Credentials
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
+          'https://www.googleapis.com/auth/drive',
+          ]
 
 PARTS_SHEET = "parts_pool"
 RASKROI_SHEET = "raskroi"
@@ -47,7 +49,7 @@ ITEMS_SHEET = "raskroi_items"
 PARTS_COLUMNS = ["id", "order", "product", "uzel", "grade", "thickness", "custom_sheet",
                  "code", "name", "size", "qty_total", "area"]
 RASKROI_COLUMNS = ["id", "name", "grade", "thickness", "custom_sheet", "status",
-                    "pdf_name", "created"]
+                    "pdf_name", "sheet_count", "created"]
 ITEMS_COLUMNS = ["raskroy_id", "part_id", "qty"]
 
 STATUS_FLOW = ["Создан", "Выдан", "Вырезан"]
@@ -123,7 +125,7 @@ def create_raskroy(name, grade, thickness, custom_sheet=""):
     ws = _ws(RASKROI_SHEET)
     new_id = uuid.uuid4().hex[:8]
     import datetime
-    row = [new_id, name, grade, thickness, custom_sheet, "Создан", "",
+    row = [new_id, name, grade, thickness, custom_sheet, "Создан", "", "1",
            datetime.date.today().isoformat()]
     ws.append_row(row)
     return new_id
@@ -140,7 +142,7 @@ def update_raskroy_status(raskroy_id, status):
     return True
 
 
-def attach_pdf(raskroy_id, pdf_name):
+def attach_pdf(raskroy_id, pdf_name, sheet_count=None):
     ws = _ws(RASKROI_SHEET)
     ids = ws.col_values(1)
     if raskroy_id not in ids:
@@ -148,6 +150,9 @@ def attach_pdf(raskroy_id, pdf_name):
     row = ids.index(raskroy_id) + 1
     col = RASKROI_COLUMNS.index("pdf_name") + 1
     ws.update_cell(row, col, pdf_name)
+    if sheet_count is not None:
+        sc_col = RASKROI_COLUMNS.index("sheet_count") + 1
+        ws.update_cell(row, sc_col, sheet_count)
     return True
 
 

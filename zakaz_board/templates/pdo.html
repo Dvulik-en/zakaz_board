@@ -3,22 +3,35 @@
 <h1>Обзор по заказам</h1>
 
 {% for order_name, products in tree.items() %}
-  <details class="lvl-order" open>
+  <details>
     <summary>{{ order_name }}</summary>
-    <table>
-      <tr><th>Изделие</th><th>Нужно, шт</th><th>Назначено в раскрои</th><th>Вырезано</th><th>%</th></tr>
-      {% for product_name, st in products.items() %}
-      <tr>
-        <td>{{ product_name }}</td>
-        <td>{{ st.total }}</td>
-        <td>{{ st.assigned }}</td>
-        <td>{{ st.cut }}</td>
-        <td>{{ (st.cut / st.total * 100) | round(1) if st.total else 0 }}%</td>
-      </tr>
-      {% endfor %}
-    </table>
+    {% for product_name, uzly in products.items() %}
+      <details style="margin:8px 10px;">
+        <summary style="background:#d9e1f2;">{{ product_name }}</summary>
+        {% for uzel, part_list in uzly.items() %}
+          <details style="margin:8px 10px; box-shadow:none; border:1px solid #eee;">
+            <summary style="background:#f0f4fa; font-size:13px; font-weight:normal;">{{ uzel }}</summary>
+            <table>
+              <tr><th>Код</th><th>Наименование</th><th>Марка/толщина</th><th>Размер</th>
+                  <th>Нужно</th><th>В раскроях</th><th>Вырезано</th></tr>
+              {% for p in part_list %}
+              <tr class="{% if p._cut >= (p.qty_total|int) and (p.qty_total|int) > 0 %}st-done{% elif p._assigned > 0 %}st-progress{% endif %}">
+                <td>{{ p.code }}</td>
+                <td>{{ p.name }}</td>
+                <td>{{ p.grade }} {{ p.thickness }}мм</td>
+                <td>{{ p.size }}</td>
+                <td>{{ p.qty_total }}</td>
+                <td>{{ p._assigned }}</td>
+                <td>{{ p._cut }}</td>
+              </tr>
+              {% endfor %}
+            </table>
+          </details>
+        {% endfor %}
+      </details>
+    {% endfor %}
   </details>
 {% else %}
-  <p>Пока ничего не загружено. Загрузка деталей — на вкладке «Технолог» (или скриптом upload_parts.py).</p>
+  <p>Пока ничего не загружено. Заливка деталей — скриптом upload_parts.py.</p>
 {% endfor %}
 {% endblock %}

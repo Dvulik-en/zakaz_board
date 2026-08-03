@@ -78,6 +78,8 @@ def parse_ajan_pdf(path):
                                 meta["material"] = row[i + 1]
                             elif cell == "Размерлиста" and i + 1 < len(row) and row[i + 1]:
                                 meta["sheet_size"] = row[i + 1]
+                            elif cell == "Кол-воповторов" and i + 1 < len(row) and row[i + 1]:
+                                meta["repeat_count"] = row[i + 1]
                 if t and t[0] and t[0][0] and "Номер" in str(t[0][0]):
                     parts_table = t
 
@@ -114,6 +116,7 @@ def parse_ajan_pdf(path):
                 "material": meta.get("material"),
                 "thickness": meta.get("thickness"),
                 "sheet_size": meta.get("sheet_size"),
+                "repeat_count": meta.get("repeat_count", "1"),
                 "parts": parts,
             })
     return results

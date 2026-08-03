@@ -63,9 +63,13 @@ def main():
         print('Использование: python upload_parts.py "папка заказа"')
         sys.exit(1)
 
-    folder = sys.argv[1]
+    # если путь с пробелами дали без кавычек — Windows/PowerShell разобьёт его
+    # на несколько аргументов; склеиваем обратно, чтобы не падать на пустом месте
+    folder = " ".join(sys.argv[1:])
+
     if not os.path.isdir(folder):
-        print("Такой папки нет.")
+        print(f"Такой папки нет: {folder}")
+        print('Если в пути есть пробелы — возьмите его в кавычки: python upload_parts.py "D:\\путь с пробелом"')
         sys.exit(1)
 
     print("Читаю эксельки...")
