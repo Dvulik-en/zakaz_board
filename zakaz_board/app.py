@@ -1,7 +1,7 @@
 import os
 import time
 from collections import defaultdict, OrderedDict
-from datetime import datetime
+from datetime import datetime, date 
 
 from flask import Flask, render_template, request, redirect, url_for
 import requests
