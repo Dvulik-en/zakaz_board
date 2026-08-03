@@ -61,11 +61,11 @@
           {% for uzel, groups in uzly.items() %}
             <details style="margin:8px 10px; box-shadow:none; border:1px solid #eee;">
               <summary style="background:#f0f4fa; font-size:13px; font-weight:normal;">{{ uzel }}</summary>
-              {% for key, part_list in groups.items() %}
+              {% for label, part_list in groups.items() %}
                 <div style="margin:6px 10px; border:1px dashed #ccc; border-radius:6px; padding:6px 10px;">
                   <label style="font-size:13px;">
                     <input type="checkbox" name="group_ids" value="{{ part_list | map(attribute='id') | join(',') }}">
-                    <b>Лист: {{ key[0] or '?' }} {{ key[1] or '?' }}мм{% if key[2] %} (нестанд. {{ key[2] }}){% endif %}</b>
+                    <b>Лист: {{ label }}</b>
                     — {{ part_list | length }} поз.
                   </label>
                   <table>

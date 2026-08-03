@@ -38,16 +38,14 @@ import uuid
 import gspread
 from google.oauth2.service_account import Credentials
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
-          'https://www.googleapis.com/auth/drive',
-          ]
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 PARTS_SHEET = "parts_pool"
 RASKROI_SHEET = "raskroi"
 ITEMS_SHEET = "raskroi_items"
 
 PARTS_COLUMNS = ["id", "order", "product", "uzel", "grade", "thickness", "custom_sheet",
-                 "code", "name", "size", "qty_total", "area"]
+                 "code", "name", "size", "qty_total", "area", "material_raw"]
 RASKROI_COLUMNS = ["id", "name", "grade", "thickness", "custom_sheet", "status",
                     "pdf_name", "sheet_count", "created"]
 ITEMS_COLUMNS = ["raskroy_id", "part_id", "qty"]

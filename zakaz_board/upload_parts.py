@@ -42,7 +42,7 @@ def collect_rows(folder):
                 "grade": p["grade"], "thickness": p["thickness"], "custom_sheet": custom_str,
                 "code": str(p["code"]), "name": p["name"],
                 "size": zr.size_to_str(p["size_info"]), "qty_total": p["qty"],
-                "area": round(p["area_m2"], 3),
+                "area": round(p["area_m2"], 3), "material_raw": p.get("material_raw", ""),
             })
 
     for pdir in product_dirs:

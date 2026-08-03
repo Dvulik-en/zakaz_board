@@ -156,12 +156,14 @@ def extract_plasma_parts(filepath):
         op = ws.cell(row=r, column=col_op).value
         if op and "плазм" in str(op).lower():
             qty = ws.cell(row=r, column=col_qty).value or 0
-            thickness, grade, custom_sheet = parse_material(ws.cell(row=r, column=col_mat).value)
+            material_raw = ws.cell(row=r, column=col_mat).value
+            thickness, grade, custom_sheet = parse_material(material_raw)
             size_info = parse_size(ws.cell(row=r, column=col_size).value)
             rows.append({
                 "code": ws.cell(row=r, column=col_code).value,
                 "name": ws.cell(row=r, column=col_name).value,
                 "grade": grade, "thickness": thickness, "custom_sheet": custom_sheet,
+                "material_raw": (material_raw or "").strip(),
                 "size_info": size_info, "qty": qty,
                 "area_m2": area_m2(size_info, qty),
             })

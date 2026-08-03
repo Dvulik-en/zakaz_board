@@ -117,7 +117,7 @@ def pdo_view():
 # -------------------------------------------------------------- Технолог ---
 
 def group_uzel_by_thickness(tree):
-    """Заказ->Изделие->Узел->[детали] превращает в ...->Узел->{(марка,толщ,нестанд):[детали]}"""
+    """Заказ->Изделие->Узел->[детали] превращает в ...->Узел->{исходная_строка_материала:[детали]}"""
     out = OrderedDict()
     for order, products in tree.items():
         out[order] = OrderedDict()
@@ -126,8 +126,8 @@ def group_uzel_by_thickness(tree):
             for uzel, parts_list in uzly.items():
                 groups = OrderedDict()
                 for p in parts_list:
-                    key = (p.get("grade"), p.get("thickness"), p.get("custom_sheet") or "")
-                    groups.setdefault(key, []).append(p)
+                    label = p.get("material_raw") or f'{p.get("grade") or "?"} {p.get("thickness") or "?"}мм'
+                    groups.setdefault(label, []).append(p)
                 out[order][product][uzel] = groups
     return out
 
